@@ -21,9 +21,15 @@ describe('C4MappingService', () => {
         });
 
         it('returns undefined when no namespace in the chain sets a default', async () => {
-            mock.onGet('/api/calm/namespaces/org/conventions/c4-mapping/default').reply(404, 'Not found');
+            mock.onGet('/api/calm/namespaces/org/conventions/c4-mapping/default').reply(204);
 
             await expect(service.fetchDefaultMapping('org')).resolves.toBeUndefined();
+        });
+
+        it('rejects when the namespace does not exist', async () => {
+            mock.onGet('/api/calm/namespaces/org.paymnts/conventions/c4-mapping/default').reply(404, 'Not found');
+
+            await expect(service.fetchDefaultMapping('org.paymnts')).rejects.toThrow('CALM Hub has no namespace org.paymnts');
         });
 
         it('rejects on any other error', async () => {

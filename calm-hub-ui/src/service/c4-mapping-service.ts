@@ -26,9 +26,11 @@ export class C4MappingService {
         const headers = await getAuthHeaders();
         return this.ax
             .get(`/api/calm/namespaces/${encodeURIComponent(namespace)}/conventions/c4-mapping/default`, { headers })
-            .then((res) => res.data as NamespaceC4Mapping)
+            .then((res) => (res.status === 204 ? undefined : (res.data as NamespaceC4Mapping)))
             .catch((error) => {
-                if (isAxiosError(error) && error.response?.status === 404) return undefined;
+                if (isAxiosError(error) && error.response?.status === 404) {
+                    return Promise.reject(new Error(`CALM Hub has no namespace ${namespace}`));
+                }
                 const errorMessage = `Error fetching the C4 mapping of namespace ${namespace}:`;
                 console.error('%s', errorMessage, error);
                 return Promise.reject(new Error(errorMessage));
