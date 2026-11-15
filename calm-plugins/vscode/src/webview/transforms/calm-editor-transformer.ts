@@ -17,6 +17,10 @@ export function setLastParsedArch(arch: CalmArchitecture | null): void {
     lastParsedArch = arch;
 }
 
+export function getLastParsedArch(): CalmArchitecture | null {
+    return lastParsedArch;
+}
+
 export function buildLayoutMap(nodes: Node[]): LayoutMap {
     const layout: LayoutMap = {};
     for (const n of nodes) {

@@ -1,4 +1,7 @@
-import type { ExtToWebviewMessage } from '../../extension/types/messages';
+import type {
+    ExtToWebviewMessage,
+    ListedCalmView,
+} from '../../extension/types/messages';
 import type { ControlBrowseGroup } from '../../extension/services/control-asset-service';
 import type { ParsedRequirement } from '../../extension/services/requirement-parser';
 import { postMessage } from '../vscode-api';
@@ -51,6 +54,9 @@ let hubLoadingCallback: HubLoadingCallback | undefined;
 
 type ControlsChangedCallback = () => void;
 let controlsChangedCallback: ControlsChangedCallback | undefined;
+
+type ViewsListedCallback = (views: ListedCalmView[]) => void;
+let viewsListedCallback: ViewsListedCallback | undefined;
 
 // --- Correlation infrastructure for control request/response messages. ---
 type PendingResolver = (msg: ExtToWebviewMessage) => void;
@@ -118,6 +124,14 @@ export function setControlsChangedCallback(cb: ControlsChangedCallback): void {
     controlsChangedCallback = cb;
 }
 
+export function setViewsListedCallback(cb: ViewsListedCallback): void {
+    viewsListedCallback = cb;
+}
+
+export function notifyRequestViews(): void {
+    postMessage({ type: 'requestViews' });
+}
+
 export function initBridge(): void {
     window.addEventListener(
         'message',
@@ -152,6 +166,9 @@ export function initBridge(): void {
                     break;
                 case 'controlsChanged':
                     controlsChangedCallback?.();
+                    break;
+                case 'viewsListed':
+                    viewsListedCallback?.(msg.views);
                     break;
                 case 'controlBrowseResult':
                 case 'controlDomainResult':

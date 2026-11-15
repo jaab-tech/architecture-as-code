@@ -25,6 +25,7 @@ import { resolveLocalPath, resolveSafeWritePath } from '../services/path-resolve
 import { buildArchitecturePattern } from '../services/pattern-export';
 import type {
     ExtToWebviewMessage,
+    ListedCalmView,
     WebviewToExtMessage,
 } from '../types/messages';
 
@@ -336,6 +337,9 @@ export class CanvasPanel {
             case 'resolveDefinitionId':
                 void this.handleResolveDefinitionId(message.nodeId, message.curie);
                 break;
+            case 'requestViews':
+                void this.sendWorkspaceViews();
+                break;
         }
     }
 
@@ -346,6 +350,46 @@ export class CanvasPanel {
             json: this.currentDocument.getText(),
             source: 'file',
         });
+        void this.sendWorkspaceViews();
+    }
+
+    /** List workspace sidecars (`*.calm-view.json`) selecting the open document. */
+    private async sendWorkspaceViews(): Promise<void> {
+        const docPath = this.currentDocument?.uri.fsPath;
+        if (!docPath) {
+            this.postMessage({ type: 'viewsListed', views: [] });
+            return;
+        }
+        const views: ListedCalmView[] = [];
+        const uris = await vscode.workspace.findFiles('**/*.calm-view.json');
+        for (const uri of uris) {
+            try {
+                const raw = await vscode.workspace.fs.readFile(uri);
+                const v = JSON.parse(Buffer.from(raw).toString('utf8')) as Record<
+                    string,
+                    unknown
+                >;
+                if (!v || typeof v !== 'object' || !v['unique-id'] || !v['filter']) {
+                    continue;
+                }
+                const target =
+                    typeof v['for'] === 'string'
+                        ? nodePath.normalize(nodePath.join(nodePath.dirname(uri.fsPath), v['for']))
+                        : '';
+                if (target !== docPath) continue;
+                views.push({
+                    uniqueId: v['unique-id'] as string,
+                    name: (v['name'] as string) ?? (v['unique-id'] as string),
+                    audience: Array.isArray(v['audience'])
+                        ? (v['audience'] as string[]).filter((a) => typeof a === 'string')
+                        : [],
+                    filter: (v['filter'] as Record<string, unknown>) ?? {},
+                });
+            } catch {
+                continue;
+            }
+        }
+        this.postMessage({ type: 'viewsListed', views });
     }
 
     public refreshAssets(): void {

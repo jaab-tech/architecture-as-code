@@ -1,6 +1,13 @@
 import type { ParsedRequirement } from '../services/requirement-parser';
 import type { ControlBrowseGroup } from '../services/control-asset-service';
 
+export interface ListedCalmView {
+    uniqueId: string;
+    name: string;
+    audience: string[];
+    filter: Record<string, unknown>;
+}
+
 export type ExtToWebviewMessage =
     | {
           type: 'modelUpdated';
@@ -43,7 +50,8 @@ export type ExtToWebviewMessage =
       }
     | { type: 'controlResolveResult'; requestId: string; ok: false; error: string }
     | { type: 'saveControlResult'; requestId: string; ok: true }
-    | { type: 'saveControlResult'; requestId: string; ok: false; error: string };
+    | { type: 'saveControlResult'; requestId: string; ok: false; error: string }
+    | { type: 'viewsListed'; views: ListedCalmView[] };
 
 export type WebviewToExtMessage =
     | { type: 'ready' }
@@ -66,4 +74,5 @@ export type WebviewToExtMessage =
     | { type: 'saveControl'; requestId: string; filename: string; content: string }
     | { type: 'savePattern'; filename: string; content: string }
     | { type: 'requestExportPattern'; doc: string }
-    | { type: 'openControlInHub'; ref: string };
+    | { type: 'openControlInHub'; ref: string }
+    | { type: 'requestViews' };

@@ -30,6 +30,8 @@ import {
     setDefinitionResolvedCallback,
     setDefinitionResolutionFailedCallback,
     setControlsChangedCallback,
+    setViewsListedCallback,
+    notifyRequestViews,
     notifyCanvasChanged,
     notifyDrillInto,
     notifyDrillUp,
@@ -42,9 +44,12 @@ import {
     flowToCalm,
     relayoutByPath,
     setLastParsedArch,
+    getLastParsedArch,
     applyLayoutFromMetadata,
     type CalmArchitecture,
 } from './transforms/calm-editor-transformer';
+import { resolveViewSelection } from './transforms/calm-view-filter';
+import type { ListedCalmView } from '../extension/types/messages';
 import { parseCALMData } from './transforms/calm-parser';
 import { updateInstances, hasSharedDrawings, pathOf } from './transforms/node-instances';
 import { resolveLiveSelectedNode } from './utils/live-selected-node';
@@ -124,6 +129,8 @@ function CanvasApp() {
         | null
     >(null);
     const [expandControlKey, setExpandControlKey] = useState<string | null>(null);
+    const [availableViews, setAvailableViews] = useState<ListedCalmView[]>([]);
+    const [activeViewId, setActiveViewId] = useState<string>('ALL');
 
     // Undo/redo
     const undoStack = useRef<string[]>([]);
@@ -292,6 +299,22 @@ function CanvasApp() {
         }
     }, [setNodes, setEdges, enrichAllControls]);
 
+    // --- View filter (CALM views spike): hide what the active sidecar excludes ---
+    const applyView = useCallback((viewId: string) => {
+        setActiveViewId(viewId);
+        if (viewId === 'ALL') {
+            setNodes((nds) => (nds.some((n) => n.hidden) ? nds.map((n) => ({ ...n, hidden: false })) : nds));
+            setEdges((eds) => (eds.some((e) => e.hidden) ? eds.map((e) => ({ ...e, hidden: false })) : eds));
+            return;
+        }
+        const arch = getLastParsedArch();
+        const view = availableViews.find((v) => v.uniqueId === viewId);
+        if (!arch || !view) return;
+        const sel = resolveViewSelection(arch, view.filter);
+        setNodes((nds) => nds.map((n) => ({ ...n, hidden: !sel.nodes.has(n.id) })));
+        setEdges((eds) => eds.map((e) => ({ ...e, hidden: !sel.nodes.has(e.source) || !sel.nodes.has(e.target) })));
+    }, [availableViews, setNodes, setEdges]);
+
     // After an edit that changes which drawings a node has, rebuild the canvas from the file,
     // so every drawing of a container shows the same members
     const emitAndReload = useCallback(() => {
@@ -304,6 +327,7 @@ function CanvasApp() {
     useEffect(() => {
         setModelUpdateCallback((json, source) => {
             if (source === 'file' && Date.now() < suppressFileUpdatesUntil.current) return;
+            setActiveViewId('ALL');
             loadArchitecture(json);
             setInitialized(true);
         });
@@ -321,6 +345,7 @@ function CanvasApp() {
             store.setShowValidation(false);
             store.pushDrill({ label, filePath: _filePath, readonly });
             store.setReadonlyMode(readonly ?? false);
+            setActiveViewId('ALL');
             loadArchitecture(json);
         });
         setDefinitionResolvedCallback((nodeId, controls) => {
@@ -347,7 +372,9 @@ function CanvasApp() {
             const generation = loadGeneration.current;
             enrichAllControls(reactFlowInstance.getNodes(), generation);
         });
+        setViewsListedCallback((views) => setAvailableViews(views));
         initBridge();
+        notifyRequestViews();
 
         const initialJson = getInitialCalmJson();
         if (initialJson) loadArchitecture(initialJson);
@@ -984,6 +1011,13 @@ function CanvasApp() {
                     <button onClick={() => handleLayout('RIGHT')} className="calm-toolbar-btn" title="Left-to-right layout">→ Layout</button>
                     <span className="calm-toolbar-sep" />
                     <button onClick={handleValidate} className="calm-toolbar-btn calm-toolbar-btn--validate">Validate</button>
+                    <span className="calm-toolbar-sep" />
+                    <select value={activeViewId} onChange={(e) => applyView(e.target.value)} className="calm-toolbar-btn" title="Filter the canvas by a CALM view sidecar (*.calm-view.json)">
+                        <option value="ALL">All nodes</option>
+                        {availableViews.map((v) => (
+                            <option key={v.uniqueId} value={v.uniqueId}>{v.name} ({v.audience.join(', ')})</option>
+                        ))}
+                    </select>
                     {!store.readonlyMode && (
                         <button onClick={handleApplyPattern} className="calm-toolbar-btn calm-toolbar-btn--apply" title="Apply a pattern to the canvas">Apply Pattern</button>
                     )}
