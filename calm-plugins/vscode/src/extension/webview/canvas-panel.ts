@@ -23,7 +23,6 @@ import {
 } from '../services/control-curie';
 import { resolveLocalPath, resolveSafeWritePath } from '../services/path-resolver';
 import { buildArchitecturePattern } from '../services/pattern-export';
-import { McpBridge } from '../services/mcp-bridge';
 import type {
     ExtToWebviewMessage,
     ListedCalmView,
@@ -51,7 +50,6 @@ export class CanvasPanel {
     private hubClient: HubClient | undefined;
     private hubAssetService: HubAssetService | undefined;
     private controlAssetService: ControlAssetService;
-    private mcpBridge: McpBridge | null = null;
     private shaCache = new ShaCacheService();
     private hubBaseHash = '';
     private importService: SvgImportService | undefined;
@@ -223,8 +221,6 @@ export class CanvasPanel {
     dispose(): void {
         if (this.disposed) return;
         this.disposed = true;
-        this.mcpBridge?.stop();
-        this.mcpBridge = null;
         this.panel?.dispose();
         this.panel = undefined;
         this.fileWatcher?.dispose();
@@ -344,9 +340,6 @@ export class CanvasPanel {
             case 'requestViews':
                 void this.sendWorkspaceViews();
                 break;
-            case 'requestSql':
-                void this.handleSqlRequest(message.requestId, message.query);
-                break;
         }
     }
 
@@ -358,26 +351,6 @@ export class CanvasPanel {
             source: 'file',
         });
         void this.sendWorkspaceViews();
-        void this.sendSqlAvailability();
-    }
-
-    private bridge(): McpBridge {
-        if (!this.mcpBridge) this.mcpBridge = new McpBridge(this.log);
-        return this.mcpBridge;
-    }
-
-    private async sendSqlAvailability(): Promise<void> {
-        const available = (await this.bridge().locateServer()) !== null;
-        this.postMessage({ type: 'sqlAvailable', available });
-    }
-
-    private async handleSqlRequest(requestId: string, sql: string): Promise<void> {
-        const res = await this.bridge().querySql(sql);
-        if (res.ok) {
-            this.postMessage({ type: 'sqlResult', requestId, ok: true, rows: res.rows });
-        } else {
-            this.postMessage({ type: 'sqlResult', requestId, ok: false, error: res.error });
-        }
     }
 
     /** Decorator summaries for a view filter; unreadable files are skipped. */

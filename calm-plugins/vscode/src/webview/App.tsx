@@ -31,10 +31,7 @@ import {
     setDefinitionResolutionFailedCallback,
     setControlsChangedCallback,
     setViewsListedCallback,
-    setSqlResultCallback,
-    setSqlAvailableCallback,
     notifyRequestViews,
-    notifyRequestSql,
     notifyCanvasChanged,
     notifyDrillInto,
     notifyDrillUp,
@@ -135,11 +132,6 @@ function CanvasApp() {
     const [availableViews, setAvailableViews] = useState<ListedCalmView[]>([]);
     const [activeViewId, setActiveViewId] = useState<string>('ALL');
     const [viewStats, setViewStats] = useState<string | null>(null);
-    const [sqlAvailable, setSqlAvailable] = useState(false);
-    const [sqlInput, setSqlInput] = useState('SELECT view, COUNT(*) AS n FROM view_nodes GROUP BY view ORDER BY n DESC');
-    const [sqlRows, setSqlRows] = useState<Record<string, unknown>[] | null>(null);
-    const [sqlError, setSqlError] = useState<string | null>(null);
-    const [sqlPendingId, setSqlPendingId] = useState<string | null>(null);
 
     // Undo/redo
     const undoStack = useRef<string[]>([]);
@@ -152,7 +144,6 @@ function CanvasApp() {
     const undoingOrRedoing = useRef(false);
     const loadGeneration = useRef(0);
     const pendingNodesRef = useRef<Node[] | null>(null);
-    const sqlPendingIdRef = useRef<string | null>(null);
     // React Flow calls onEdgesChange for the edges of deleted drawings, then onNodesDelete, then onNodesChange
     // with a remove change for each deleted drawing. A delete that reloads the canvas saves the file itself,
     // and the drawings it keeps must not be removed.
@@ -310,12 +301,7 @@ function CanvasApp() {
     }, [setNodes, setEdges, enrichAllControls]);
 
     // --- View filter (CALM views spike): hide what the active sidecar excludes ---
-    const runSqlQuery = useCallback(() => {
-        const requestId = notifyRequestSql(sqlInput);
-        sqlPendingIdRef.current = requestId;
-        setSqlPendingId(requestId);
-        setSqlError(null);
-    }, [sqlInput]);    const applyView = useCallback((viewId: string) => {
+    const applyView = useCallback((viewId: string) => {
         setActiveViewId(viewId);
         if (viewId === 'ALL') {
             setViewStats(null);
@@ -392,19 +378,6 @@ function CanvasApp() {
             enrichAllControls(reactFlowInstance.getNodes(), generation);
         });
         setViewsListedCallback((views) => setAvailableViews(views));
-        setSqlAvailableCallback((available) => setSqlAvailable(available));
-        setSqlResultCallback((msg) => {
-            if (msg.requestId !== sqlPendingIdRef.current) return;
-            sqlPendingIdRef.current = null;
-            setSqlPendingId(null);
-            if (msg.ok) {
-                setSqlRows(msg.rows as Record<string, unknown>[]);
-                setSqlError(null);
-            } else {
-                setSqlRows(null);
-                setSqlError(msg.error);
-            }
-        });
         initBridge();
         notifyRequestViews();
 
@@ -1083,32 +1056,6 @@ function CanvasApp() {
                         {d.appliesTo && <span>applies to {d.appliesTo.length} nodes</span>}
                     </div>
                 ))}
-
-            {/* SQL query (workspace MCP server, read-only) */}
-            {sqlAvailable && (
-                <div style={{ padding: '4px 12px', fontSize: '11px', background: 'var(--calm-bg-secondary)', borderBottom: '1px solid var(--calm-border)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ fontWeight: 600 }}>SQL</span>
-                        <input value={sqlInput} onChange={(e) => setSqlInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') runSqlQuery(); }} placeholder="SELECT ... (read-only)" spellCheck={false}
-                            style={{ flex: 1, fontFamily: 'monospace', background: 'var(--calm-bg)', color: 'var(--calm-fg)', border: '1px solid var(--calm-border)', borderRadius: '4px', padding: '2px 6px' }} />
-                        <button onClick={runSqlQuery} className="calm-toolbar-btn" disabled={sqlPendingId !== null}>Run</button>
-                        {sqlError && <span style={{ color: 'var(--vscode-editorError-foreground, #f14c4c)' }}>{sqlError}</span>}
-                    </div>
-                    {sqlRows && sqlRows.length > 0 && (
-                        <table style={{ marginTop: '4px', borderCollapse: 'collapse', maxHeight: '160px', overflow: 'auto', display: 'block' }}>
-                            <thead><tr>{Object.keys(sqlRows[0] as Record<string, unknown>).map((c) => (
-                                <th key={c} style={{ textAlign: 'left', padding: '2px 8px 2px 0', borderBottom: '1px solid var(--calm-border)' }}>{c}</th>
-                            ))}</tr></thead>
-                            <tbody>{sqlRows.slice(0, 20).map((row, i) => (
-                                <tr key={i}>{Object.values(row as Record<string, unknown>).map((v, j) => (
-                                    <td key={j} style={{ padding: '2px 8px 2px 0' }}>{String(v ?? '')}</td>
-                                ))}</tr>
-                            ))}</tbody>
-                        </table>
-                    )}
-                    {sqlRows && sqlRows.length === 0 && <span style={{ opacity: 0.7 }}>0 rows</span>}
-                </div>
-            )}
 
             {/* Breadcrumb */}
             {store.drillStack.length > 0 && (

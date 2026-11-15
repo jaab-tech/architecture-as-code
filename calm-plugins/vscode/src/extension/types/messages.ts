@@ -60,10 +60,7 @@ export type ExtToWebviewMessage =
     | { type: 'controlResolveResult'; requestId: string; ok: false; error: string }
     | { type: 'saveControlResult'; requestId: string; ok: true }
     | { type: 'saveControlResult'; requestId: string; ok: false; error: string }
-    | { type: 'viewsListed'; views: ListedCalmView[] }
-    | { type: 'sqlAvailable'; available: boolean }
-    | { type: 'sqlResult'; requestId: string; ok: true; rows: unknown[] }
-    | { type: 'sqlResult'; requestId: string; ok: false; error: string };
+    | { type: 'viewsListed'; views: ListedCalmView[] };
 
 export type WebviewToExtMessage =
     | { type: 'ready' }
@@ -87,5 +84,4 @@ export type WebviewToExtMessage =
     | { type: 'savePattern'; filename: string; content: string }
     | { type: 'requestExportPattern'; doc: string }
     | { type: 'openControlInHub'; ref: string }
-    | { type: 'requestViews' }
-    | { type: 'requestSql'; requestId: string; query: string };
+    | { type: 'requestViews' };
