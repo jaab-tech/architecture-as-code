@@ -363,29 +363,35 @@ export class CanvasPanel {
         if (!Array.isArray(ids)) return out;
         for (const id of ids) {
             if (typeof id !== 'string') continue;
+            const decoPath = nodePath.join(viewDir, `${id}.decorator.json`);
             try {
-                const raw = await vscode.workspace.fs.readFile(
-                    vscode.Uri.file(nodePath.join(viewDir, `${id}.decorator.json`))
-                );
+                const raw = await vscode.workspace.fs.readFile(vscode.Uri.file(decoPath));
                 const d = JSON.parse(Buffer.from(raw).toString('utf8')) as Record<
                     string,
                     unknown
                 >;
+                const data = (d['data'] as Record<string, unknown> | undefined) ?? {};
                 const str = (x: unknown): string | undefined =>
                     typeof x === 'string' ? x : undefined;
                 out.push({
                     uniqueId: id,
                     type: str(d['type']),
-                    reviewed: str(d['reviewed']),
-                    outcome: str(d['outcome']),
+                    reviewed: str(d['reviewed']) ?? str(data['reviewed']),
+                    outcome: str(d['outcome']) ?? str(data['outcome']),
                     appliesTo: Array.isArray(d['applies-to'])
                         ? (d['applies-to'] as unknown[]).filter((a): a is string => typeof a === 'string')
                         : undefined,
                 });
-            } catch {
+            } catch (err) {
+                this.log.appendLine(
+                    `[CanvasPanel] view decorator unreadable: ${decoPath} (${err instanceof Error ? err.message : String(err)})`
+                );
                 continue;
             }
         }
+        this.log.appendLine(
+            `[CanvasPanel] view decorators resolved: ${out.length} from ${viewDir}`
+        );
         return out;
     }
 

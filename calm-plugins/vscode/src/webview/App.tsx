@@ -755,9 +755,10 @@ function CanvasApp() {
             const { nodes: laid, edges: parsedEdges, copiesLimited } = parseCALMData(arch, direction);
             setNodes(laid); setEdges(parsedEdges);
             useCanvasStore.setState({ copiesLimited });
+            applyView(activeViewId);
             setTimeout(() => emitChange(true), 0);
         } catch { /* */ }
-    }, [setNodes, setEdges, emitChange]);
+    }, [setNodes, setEdges, emitChange, applyView, activeViewId]);
 
     // --- Export SVG ---
     const handleExportSvg = useCallback(async () => {
