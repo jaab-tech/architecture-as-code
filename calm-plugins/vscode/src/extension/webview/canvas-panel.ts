@@ -353,6 +353,42 @@ export class CanvasPanel {
         void this.sendWorkspaceViews();
     }
 
+    /** Decorator summaries for a view filter; unreadable files are skipped. */
+    private async readViewDecorators(
+        viewDir: string,
+        filter: unknown
+    ): Promise<ListedCalmView['decorators']> {
+        const out: ListedCalmView['decorators'] = [];
+        const ids = (filter as Record<string, unknown> | null)?.['decorators'];
+        if (!Array.isArray(ids)) return out;
+        for (const id of ids) {
+            if (typeof id !== 'string') continue;
+            try {
+                const raw = await vscode.workspace.fs.readFile(
+                    vscode.Uri.file(nodePath.join(viewDir, `${id}.decorator.json`))
+                );
+                const d = JSON.parse(Buffer.from(raw).toString('utf8')) as Record<
+                    string,
+                    unknown
+                >;
+                const str = (x: unknown): string | undefined =>
+                    typeof x === 'string' ? x : undefined;
+                out.push({
+                    uniqueId: id,
+                    type: str(d['type']),
+                    reviewed: str(d['reviewed']),
+                    outcome: str(d['outcome']),
+                    appliesTo: Array.isArray(d['applies-to'])
+                        ? (d['applies-to'] as unknown[]).filter((a): a is string => typeof a === 'string')
+                        : undefined,
+                });
+            } catch {
+                continue;
+            }
+        }
+        return out;
+    }
+
     /** List workspace sidecars (`*.calm-view.json`) selecting the open document. */
     private async sendWorkspaceViews(): Promise<void> {
         const docPath = this.currentDocument?.uri.fsPath;
@@ -377,6 +413,8 @@ export class CanvasPanel {
                         ? nodePath.normalize(nodePath.join(nodePath.dirname(uri.fsPath), v['for']))
                         : '';
                 if (target !== docPath) continue;
+                const dir = nodePath.dirname(uri.fsPath);
+                const decorators = await this.readViewDecorators(dir, v['filter']);
                 views.push({
                     uniqueId: v['unique-id'] as string,
                     name: (v['name'] as string) ?? (v['unique-id'] as string),
@@ -384,6 +422,7 @@ export class CanvasPanel {
                         ? (v['audience'] as string[]).filter((a) => typeof a === 'string')
                         : [],
                     filter: (v['filter'] as Record<string, unknown>) ?? {},
+                    decorators,
                 });
             } catch {
                 continue;

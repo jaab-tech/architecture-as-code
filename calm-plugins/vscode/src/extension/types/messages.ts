@@ -1,11 +1,20 @@
 import type { ParsedRequirement } from '../services/requirement-parser';
 import type { ControlBrowseGroup } from '../services/control-asset-service';
 
+export interface ListedViewDecorator {
+    uniqueId: string;
+    type?: string;
+    reviewed?: string;
+    outcome?: string;
+    appliesTo?: string[];
+}
+
 export interface ListedCalmView {
     uniqueId: string;
     name: string;
     audience: string[];
     filter: Record<string, unknown>;
+    decorators: ListedViewDecorator[];
 }
 
 export type ExtToWebviewMessage =

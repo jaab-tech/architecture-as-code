@@ -131,6 +131,7 @@ function CanvasApp() {
     const [expandControlKey, setExpandControlKey] = useState<string | null>(null);
     const [availableViews, setAvailableViews] = useState<ListedCalmView[]>([]);
     const [activeViewId, setActiveViewId] = useState<string>('ALL');
+    const [viewStats, setViewStats] = useState<string | null>(null);
 
     // Undo/redo
     const undoStack = useRef<string[]>([]);
@@ -303,6 +304,7 @@ function CanvasApp() {
     const applyView = useCallback((viewId: string) => {
         setActiveViewId(viewId);
         if (viewId === 'ALL') {
+            setViewStats(null);
             setNodes((nds) => (nds.some((n) => n.hidden) ? nds.map((n) => ({ ...n, hidden: false })) : nds));
             setEdges((eds) => (eds.some((e) => e.hidden) ? eds.map((e) => ({ ...e, hidden: false })) : eds));
             return;
@@ -311,6 +313,7 @@ function CanvasApp() {
         const view = availableViews.find((v) => v.uniqueId === viewId);
         if (!arch || !view) return;
         const sel = resolveViewSelection(arch, view.filter);
+        setViewStats(`${sel.nodes.size}/${arch.nodes.length} nodes · ${sel.relationships.size}/${arch.relationships.length} relationships`);
         setNodes((nds) => nds.map((n) => ({ ...n, hidden: !sel.nodes.has(n.id) })));
         setEdges((eds) => eds.map((e) => ({ ...e, hidden: !sel.nodes.has(e.source) || !sel.nodes.has(e.target) })));
     }, [availableViews, setNodes, setEdges]);
@@ -328,6 +331,7 @@ function CanvasApp() {
         setModelUpdateCallback((json, source) => {
             if (source === 'file' && Date.now() < suppressFileUpdatesUntil.current) return;
             setActiveViewId('ALL');
+            setViewStats(null);
             loadArchitecture(json);
             setInitialized(true);
         });
@@ -346,6 +350,7 @@ function CanvasApp() {
             store.pushDrill({ label, filePath: _filePath, readonly });
             store.setReadonlyMode(readonly ?? false);
             setActiveViewId('ALL');
+            setViewStats(null);
             loadArchitecture(json);
         });
         setDefinitionResolvedCallback((nodeId, controls) => {
@@ -1018,6 +1023,9 @@ function CanvasApp() {
                             <option key={v.uniqueId} value={v.uniqueId}>{v.name} ({v.audience.join(', ')})</option>
                         ))}
                     </select>
+                    {viewStats && (
+                        <span style={{ fontSize: '11px', color: 'var(--calm-fg)', opacity: 0.8, marginLeft: '8px' }}>{viewStats}</span>
+                    )}
                     {!store.readonlyMode && (
                         <button onClick={handleApplyPattern} className="calm-toolbar-btn calm-toolbar-btn--apply" title="Apply a pattern to the canvas">Apply Pattern</button>
                     )}
@@ -1035,6 +1043,18 @@ function CanvasApp() {
                     )}
                 </div>
             </div>
+
+            {/* Active view decorators (read-only evidence strip) */}
+            {activeViewId !== 'ALL' &&
+                (availableViews.find((v) => v.uniqueId === activeViewId)?.decorators ?? []).map((d) => (
+                    <div key={d.uniqueId} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 12px', fontSize: '11px', background: 'var(--calm-bg-secondary)', borderBottom: '1px solid var(--calm-border)' }}>
+                        <span style={{ fontWeight: 600 }}>Decorator: {d.uniqueId}</span>
+                        {d.type && <span>({d.type})</span>}
+                        {d.reviewed && <span>reviewed {d.reviewed}</span>}
+                        {d.outcome && <span>outcome: {d.outcome}</span>}
+                        {d.appliesTo && <span>applies to {d.appliesTo.length} nodes</span>}
+                    </div>
+                ))}
 
             {/* Breadcrumb */}
             {store.drillStack.length > 0 && (
