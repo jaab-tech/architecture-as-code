@@ -58,6 +58,16 @@ let controlsChangedCallback: ControlsChangedCallback | undefined;
 type ViewsListedCallback = (views: ListedCalmView[]) => void;
 let viewsListedCallback: ViewsListedCallback | undefined;
 
+export type SqlResultMsg =
+    | { requestId: string; ok: true; rows: unknown[] }
+    | { requestId: string; ok: false; error: string };
+
+type SqlResultCallback = (msg: SqlResultMsg) => void;
+let sqlResultCallback: SqlResultCallback | undefined;
+
+type SqlAvailableCallback = (available: boolean) => void;
+let sqlAvailableCallback: SqlAvailableCallback | undefined;
+
 // --- Correlation infrastructure for control request/response messages. ---
 type PendingResolver = (msg: ExtToWebviewMessage) => void;
 const pending = new Map<
@@ -132,6 +142,23 @@ export function notifyRequestViews(): void {
     postMessage({ type: 'requestViews' });
 }
 
+export function setSqlResultCallback(cb: SqlResultCallback): void {
+    sqlResultCallback = cb;
+}
+
+export function setSqlAvailableCallback(cb: SqlAvailableCallback): void {
+    sqlAvailableCallback = cb;
+}
+
+let sqlRequestCounter = 0;
+
+export function notifyRequestSql(query: string): string {
+    sqlRequestCounter += 1;
+    const requestId = `sql-${Date.now()}-${sqlRequestCounter}`;
+    postMessage({ type: 'requestSql', requestId, query });
+    return requestId;
+}
+
 export function initBridge(): void {
     window.addEventListener(
         'message',
@@ -169,6 +196,12 @@ export function initBridge(): void {
                     break;
                 case 'viewsListed':
                     viewsListedCallback?.(msg.views);
+                    break;
+                case 'sqlAvailable':
+                    sqlAvailableCallback?.(msg.available);
+                    break;
+                case 'sqlResult':
+                    sqlResultCallback?.(msg);
                     break;
                 case 'controlBrowseResult':
                 case 'controlDomainResult':
