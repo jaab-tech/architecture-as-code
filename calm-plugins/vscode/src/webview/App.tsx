@@ -132,6 +132,7 @@ function CanvasApp() {
     const [availableViews, setAvailableViews] = useState<ListedCalmView[]>([]);
     const [activeViewId, setActiveViewId] = useState<string>('ALL');
     const [viewStats, setViewStats] = useState<string | null>(null);
+    const [viewStack, setViewStack] = useState<string[]>([]);
 
     // Undo/redo
     const undoStack = useRef<string[]>([]);
@@ -331,6 +332,7 @@ function CanvasApp() {
         setModelUpdateCallback((json, source) => {
             if (source === 'file' && Date.now() < suppressFileUpdatesUntil.current) return;
             setActiveViewId('ALL');
+            setViewStack([]);
             setViewStats(null);
             loadArchitecture(json);
             setInitialized(true);
@@ -350,6 +352,7 @@ function CanvasApp() {
             store.pushDrill({ label, filePath: _filePath, readonly });
             store.setReadonlyMode(readonly ?? false);
             setActiveViewId('ALL');
+            setViewStack([]);
             setViewStats(null);
             loadArchitecture(json);
         });
@@ -547,6 +550,14 @@ function CanvasApp() {
 
     // --- Node double-click (drill-in or select+focus) ---
     const handleNodeDoubleClick = useCallback((_event: React.MouseEvent, node: Node) => {
+        if (activeViewId !== 'ALL') {
+            const target = availableViews.find((v) => v.uniqueId === activeViewId)?.drillDown?.[node.id];
+            if (target) {
+                setViewStack((s) => [...s, activeViewId]);
+                applyView(target);
+                return;
+            }
+        }
         const data = node.data as Record<string, unknown>;
         const details = data?.details as { 'detailed-architecture'?: string } | undefined;
         const calmType = (data?.calmType as string) ?? '';
@@ -568,7 +579,15 @@ function CanvasApp() {
             selectDrawing(node);
             store.selectNode(node.id);
         }
-    }, [store, selectDrawing]);
+    }, [store, selectDrawing, activeViewId, availableViews, applyView]);
+
+    const goBackView = useCallback(() => {
+        setViewStack((s) => {
+            const prev = s[s.length - 1] as string | undefined;
+            if (prev) applyView(prev);
+            return s.slice(0, -1);
+        });
+    }, [applyView]);
 
     const handleEdgeClick = useCallback((_event: React.MouseEvent, edge: Edge) => {
         setSelectedEdge(edge);
@@ -1026,6 +1045,9 @@ function CanvasApp() {
                     </select>
                     {viewStats && (
                         <span style={{ fontSize: '11px', color: 'var(--calm-fg)', opacity: 0.8, marginLeft: '8px' }}>{viewStats}</span>
+                    )}
+                    {viewStack.length > 0 && (
+                        <button onClick={goBackView} className="calm-toolbar-btn" title="Back to the previous view">‹ Back</button>
                     )}
                     {!store.readonlyMode && (
                         <button onClick={handleApplyPattern} className="calm-toolbar-btn calm-toolbar-btn--apply" title="Apply a pattern to the canvas">Apply Pattern</button>

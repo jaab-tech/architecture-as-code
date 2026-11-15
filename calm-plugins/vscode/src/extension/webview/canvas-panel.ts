@@ -429,6 +429,7 @@ export class CanvasPanel {
                         : [],
                     filter: (v['filter'] as Record<string, unknown>) ?? {},
                     decorators,
+                    drillDown: (v['drill-down'] as Record<string, string> | undefined) ?? {},
                 });
             } catch {
                 continue;
