@@ -45,11 +45,39 @@ describe('resolveViewSelection', () => {
         expect(sel.relationships.has('r1')).toBe(true);
         expect(sel.relationships.has('r2')).toBe(false);
     });
-    it('keeps explicitly listed relationships', () => {
+    it('drops listed relationships whose endpoints cannot lift', () => {
         const sel = resolveViewSelection(model, {
             nodes: ['b'],
             relationships: ['r2'],
         });
+        expect(sel.relationships.has('r2')).toBe(false);
+    });
+    it('keeps listed relationships whose endpoints are inside', () => {
+        const sel = resolveViewSelection(model, {
+            nodes: ['b', 'db'],
+            relationships: ['r2'],
+        });
         expect(sel.relationships.has('r2')).toBe(true);
+        expect(sel.lifted.get('r2')).toEqual(['b', 'db']);
+    });
+});
+
+describe('resolveViewSelection lifting', () => {
+    const COMP = (id: string, container: string, members: string[]) => ({
+        'unique-id': id,
+        'relationship-type': { 'composed-of': { container, nodes: members } },
+    });
+    const model = arch(
+        [N('box', 'system'), N('in-a'), N('out')],
+        [COMP('c1', 'box', ['in-a']), CONN('r1', 'in-a', 'out')]
+    );
+    it('lifts a hidden endpoint to the visible container', () => {
+        const sel = resolveViewSelection(model, { nodes: ['box', 'out'] });
+        expect(sel.relationships.has('r1')).toBe(true);
+        expect(sel.lifted.get('r1')).toEqual(['box', 'out']);
+    });
+    it('drops relationships collapsing to a self-loop', () => {
+        const sel = resolveViewSelection(model, { nodes: ['box'] });
+        expect(sel.relationships.has('c1')).toBe(false);
     });
 });

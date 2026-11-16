@@ -1,9 +1,11 @@
-import React, { useEffect, useCallback, useRef, useState } from 'react';
+import React, { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import ReactFlow, {
     ReactFlowProvider,
     Background,
     Controls,
     MiniMap,
+    NodeToolbar,
+    Position,
     MarkerType,
     useNodesState,
     useEdgesState,
@@ -51,7 +53,7 @@ import {
 import { resolveViewSelection } from './transforms/calm-view-filter';
 import type { ListedCalmView } from '../extension/types/messages';
 import { parseCALMData } from './transforms/calm-parser';
-import { updateInstances, hasSharedDrawings, pathOf } from './transforms/node-instances';
+import { updateInstances, hasSharedDrawings, pathOf, calmIdOf } from './transforms/node-instances';
 import { resolveLiveSelectedNode } from './utils/live-selected-node';
 import { deleteDrawings, unparentDrawing, withIssueCounts, pastedNode, originalsOf } from './transforms/canvas-edits';
 import { NodePalette } from './panels/NodePalette';
@@ -145,6 +147,10 @@ function CanvasApp() {
     const undoingOrRedoing = useRef(false);
     const loadGeneration = useRef(0);
     const pendingNodesRef = useRef<Node[] | null>(null);
+    // Views rewrite edge endpoints for display only; the originals are
+    // restored before anything is emitted back to the document, so the
+    // model file never sees lifted endpoints.
+    const edgeEndpointBackup = useRef(new Map<string, { source: string; target: string }>());
     // React Flow calls onEdgesChange for the edges of deleted drawings, then onNodesDelete, then onNodesChange
     // with a remove change for each deleted drawing. A delete that reloads the canvas saves the file itself,
     // and the drawings it keeps must not be removed.
@@ -173,7 +179,10 @@ function CanvasApp() {
             }
             const currentNodes = pendingNodesRef.current ?? reactFlowInstance.getNodes();
             pendingNodesRef.current = null;
-            const currentEdges = reactFlowInstance.getEdges();
+            const currentEdges = reactFlowInstance.getEdges().map((e) => {
+                const orig = edgeEndpointBackup.current.get(e.id);
+                return orig ? { ...e, source: orig.source, target: orig.target } : e;
+            });
             const arch = flowToCalm(currentNodes, currentEdges, currentState.documentControls);
             if (forReload) (arch.metadata as Record<string, unknown>)._layout = relayoutByPath(arch, currentNodes);
             const json = JSON.stringify(arch, null, 2);
@@ -252,6 +261,7 @@ function CanvasApp() {
     const loadArchitecture = useCallback((json: string) => {
         // Invalidate any in-flight setTimeout callbacks from prior interactions
         loadGeneration.current++;
+        edgeEndpointBackup.current.clear();
         // Cancel any pending emit timers to prevent stale data from overwriting the file
         if (debounceTimer.current) { clearTimeout(debounceTimer.current); debounceTimer.current = null; }
         if (positionDebounceTimer.current) { clearTimeout(positionDebounceTimer.current); positionDebounceTimer.current = null; }
@@ -304,20 +314,62 @@ function CanvasApp() {
     // --- View filter (CALM views spike): hide what the active sidecar excludes ---
     const applyView = useCallback((viewId: string) => {
         setActiveViewId(viewId);
+        const all = reactFlowInstance.getNodes();
         if (viewId === 'ALL') {
+            edgeEndpointBackup.current.clear();
             setViewStats(null);
-            setNodes((nds) => (nds.some((n) => n.hidden) ? nds.map((n) => ({ ...n, hidden: false })) : nds));
-            setEdges((eds) => (eds.some((e) => e.hidden) ? eds.map((e) => ({ ...e, hidden: false })) : eds));
+            setNodes((nds) => nds.map((n) => ({ ...n, hidden: false, style: { ...(n.style ?? {}), cursor: undefined } })));
+            setEdges((eds) => eds.map((e) => ({ ...e, hidden: false })));
             return;
         }
         const arch = getLastParsedArch();
         const view = availableViews.find((v) => v.uniqueId === viewId);
         if (!arch || !view) return;
         const sel = resolveViewSelection(arch, view.filter);
+        const drillable = new Set(Object.keys(view.drillDown ?? {}));
         setViewStats(`${sel.nodes.size}/${arch.nodes.length} nodes · ${sel.relationships.size}/${arch.relationships.length} relationships`);
-        setNodes((nds) => nds.map((n) => ({ ...n, hidden: !sel.nodes.has(n.id) })));
-        setEdges((eds) => eds.map((e) => ({ ...e, hidden: !sel.nodes.has(e.source) || !sel.nodes.has(e.target) })));
-    }, [availableViews, setNodes, setEdges]);
+        // Drilled containers render closed: their member drawings hide and
+        // member edges reroute to the container. Selection is untouched.
+        const collapseTo = new Map<string, string>();
+        for (const r of arch.relationships ?? []) {
+            const co = ((r as Record<string, unknown>)['relationship-type'] as Record<string, unknown> | undefined)?.['composed-of'] as
+                | { container?: string; nodes?: string[] }
+                | undefined;
+            if (co?.container && drillable.has(co.container) && sel.nodes.has(co.container)) {
+                for (const m of co.nodes ?? []) {
+                    if (m !== co.container) collapseTo.set(m, co.container);
+                }
+            }
+        }
+        setNodes((nds) => nds.map((n) => {
+            const c = calmIdOf(n);
+            return {
+                ...n,
+                hidden: !sel.nodes.has(c) || collapseTo.has(c),
+                style: { ...(n.style ?? {}), cursor: drillable.has(c) && sel.nodes.has(c) ? 'pointer' as const : undefined },
+            };
+        }));
+        const drawingFor = (calmId: string): string | undefined =>
+            all.find((n) => calmIdOf(n) === calmId)?.id;
+        const drawnId = (calmId: string): string | undefined => {
+            const lifted = collapseTo.get(calmId);
+            if (lifted) return drawingFor(lifted);
+            return drawingFor(calmId);
+        };
+        setEdges((eds) => eds.map((e) => {
+            const relId = (e.data as Record<string, unknown> | undefined)?.['calmRelId'] as string | undefined;
+            if (!relId || !sel.relationships.has(relId)) return { ...e, hidden: true };
+            const drawn = sel.lifted.get(relId) ?? [];
+            if (drawn.length < 2) return { ...e, hidden: true };
+            const src = drawnId(drawn[0] as string);
+            const dst = drawnId(drawn[drawn.length - 1] as string);
+            if (!src || !dst || src === dst) return { ...e, hidden: true };
+            if (!edgeEndpointBackup.current.has(e.id)) {
+                edgeEndpointBackup.current.set(e.id, { source: e.source, target: e.target });
+            }
+            return { ...e, hidden: false, source: src, target: dst };
+        }));
+    }, [availableViews, setNodes, setEdges, reactFlowInstance]);
 
     // After an edit that changes which drawings a node has, rebuild the canvas from the file,
     // so every drawing of a container shows the same members
@@ -549,12 +601,16 @@ function CanvasApp() {
     }, [store, selectDrawing]);
 
     // --- Node double-click (drill-in or select+focus) ---
+    const diveIntoView = useCallback((target: string) => {
+        setViewStack((s) => [...s, activeViewId]);
+        applyView(target);
+    }, [activeViewId, applyView]);
+
     const handleNodeDoubleClick = useCallback((_event: React.MouseEvent, node: Node) => {
         if (activeViewId !== 'ALL') {
-            const target = availableViews.find((v) => v.uniqueId === activeViewId)?.drillDown?.[node.id];
+            const target = availableViews.find((v) => v.uniqueId === activeViewId)?.drillDown?.[calmIdOf(node)];
             if (target) {
-                setViewStack((s) => [...s, activeViewId]);
-                applyView(target);
+                diveIntoView(target);
                 return;
             }
         }
@@ -579,7 +635,7 @@ function CanvasApp() {
             selectDrawing(node);
             store.selectNode(node.id);
         }
-    }, [store, selectDrawing, activeViewId, availableViews, applyView]);
+    }, [store, selectDrawing, activeViewId, availableViews, diveIntoView]);
 
     const goBackView = useCallback(() => {
         setViewStack((s) => {
@@ -588,6 +644,23 @@ function CanvasApp() {
             return s.slice(0, -1);
         });
     }, [applyView]);
+
+    const drillBadges = useMemo(() => {
+        if (activeViewId === 'ALL') return [];
+        const drill = availableViews.find((v) => v.uniqueId === activeViewId)?.drillDown ?? {};
+        const seen = new Set<string>();
+        const out: Array<{ drawingId: string; target: string; viewName: string }> = [];
+        for (const n of nodes) {
+            if (n.hidden) continue;
+            const c = calmIdOf(n);
+            const target = drill[c];
+            if (!target || seen.has(c)) continue;
+            seen.add(c);
+            const viewName = availableViews.find((v) => v.uniqueId === target)?.name ?? target;
+            out.push({ drawingId: n.id, target, viewName });
+        }
+        return out;
+    }, [nodes, availableViews, activeViewId]);
 
     const handleEdgeClick = useCallback((_event: React.MouseEvent, edge: Edge) => {
         setSelectedEdge(edge);
@@ -1119,6 +1192,14 @@ function CanvasApp() {
                         <Background />
                         <Controls />
                         <MiniMap nodeClassName={minimapNodeClassName} />
+                        {drillBadges.map((b) => (
+                            <NodeToolbar key={b.drawingId} nodeId={b.drawingId} isVisible position={Position.Top} align="end" offset={6}>
+                                <button onClick={() => diveIntoView(b.target)} title={`Dive into ${b.viewName}`}
+                                    style={{ cursor: 'pointer', border: '1px solid var(--calm-border)', borderRadius: '6px', background: 'var(--calm-bg-secondary)', color: 'var(--calm-fg)', fontSize: '12px', padding: '1px 7px' }}>
+                                    ⤵
+                                </button>
+                            </NodeToolbar>
+                        ))}
                     </ReactFlow>
 
                     {/* Validation Panel */}
@@ -1170,6 +1251,19 @@ function CanvasApp() {
                                             <textarea defaultValue={String(data.description ?? '')} key={`${liveSelectedNode.id}-desc`}
                                                 onBlur={(e) => onNodeUpdate(liveSelectedNode.id, 'description', e.target.value)} rows={3} style={{ ...inputStyle, resize: 'vertical', minHeight: '60px' }} readOnly={store.readonlyMode} />
                                         </Field>
+                                        {(() => {
+                                            const drillTarget = activeViewId !== 'ALL'
+                                                ? availableViews.find((v) => v.uniqueId === activeViewId)?.drillDown?.[String((data.calmId as string) ?? liveSelectedNode.id)]
+                                                : undefined;
+                                            const drillView = availableViews.find((v) => v.uniqueId === drillTarget);
+                                            return drillTarget && drillView ? (
+                                                <Field label="Contains">
+                                                    <button onClick={() => diveIntoView(drillTarget)} style={unparentBtnStyle} title={`Open the ${drillView.name} view`}>
+                                                        Dive into {drillView.name} ⤵
+                                                    </button>
+                                                </Field>
+                                            ) : null;
+                                        })()}
                                         {liveSelectedNode.parentId && !store.readonlyMode && (
                                             <button onClick={() => unparentNode(liveSelectedNode.id)} style={unparentBtnStyle}>Remove from Container</button>
                                         )}
