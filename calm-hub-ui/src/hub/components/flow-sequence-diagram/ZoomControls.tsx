@@ -1,4 +1,4 @@
-import { IoAdd, IoRemove, IoScanOutline, IoLockClosedOutline, IoLockOpenOutline, IoMapOutline } from 'react-icons/io5';
+import { IoAdd, IoRemove, IoScanOutline, IoLockClosedOutline, IoLockOpenOutline, IoMapOutline, IoKeyOutline, IoDocumentTextOutline } from 'react-icons/io5';
 
 interface ZoomControlsProps {
     onZoomIn: () => void;
@@ -9,6 +9,12 @@ interface ZoomControlsProps {
     /** Leave out both to show no minimap button. */
     minimapHidden?: boolean;
     onToggleMinimap?: () => void;
+    /** Leave out both to show no key button. */
+    keyHidden?: boolean;
+    onToggleKey?: () => void;
+    /** Leave out both to show no notes button. */
+    notesOpen?: boolean;
+    onToggleNotes?: () => void;
 }
 
 /** Cells match ReactFlow's 26px controls, not daisyUI button sizes. */
@@ -35,9 +41,15 @@ export function ZoomControls({
     onToggleInteractive,
     minimapHidden,
     onToggleMinimap,
+    keyHidden,
+    onToggleKey,
+    notesOpen,
+    onToggleNotes,
 }: ZoomControlsProps) {
     const lockLabel = isInteractive ? 'Lock zoom and pan' : 'Unlock zoom and pan';
     const minimapLabel = minimapHidden ? 'Show minimap' : 'Hide minimap';
+    const keyLabel = keyHidden ? 'Show key' : 'Hide key';
+    const notesLabel = notesOpen ? 'Hide notes' : 'Show notes';
 
     return (
         <div
@@ -75,6 +87,30 @@ export function ZoomControls({
                     onClick={onToggleMinimap}
                 >
                     <IoMapOutline size={ICON_SIZE} className={minimapHidden ? 'opacity-40' : undefined} />
+                </button>
+            )}
+            {onToggleKey && (
+                <button
+                    type="button"
+                    className={BUTTON_CLASS}
+                    title={keyLabel}
+                    aria-label={keyLabel}
+                    aria-pressed={!keyHidden}
+                    onClick={onToggleKey}
+                >
+                    <IoKeyOutline size={ICON_SIZE} className={keyHidden ? 'opacity-40' : undefined} />
+                </button>
+            )}
+            {onToggleNotes && (
+                <button
+                    type="button"
+                    className={BUTTON_CLASS}
+                    title={notesLabel}
+                    aria-label={notesLabel}
+                    aria-pressed={!!notesOpen}
+                    onClick={onToggleNotes}
+                >
+                    <IoDocumentTextOutline size={ICON_SIZE} className={notesOpen ? undefined : 'opacity-40'} />
                 </button>
             )}
         </div>

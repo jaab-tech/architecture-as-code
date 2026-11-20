@@ -20,10 +20,10 @@ const reply = {
     hubApi: 0, kind: 'graph',
     graph: {
         nodes: [
-            { id: 'shop', label: 'Online Shop', calm: ['shop'], link: { params: { level: 'container' } } },
-            { id: 'pay', label: 'Payments', calm: ['payments'] },
+            { id: 'shop', label: 'Online Shop', tags: ['Box', 'actor'], calm: ['shop'], link: { params: { level: 'container' } } },
+            { id: 'pay', label: 'Payments', tags: ['Box', 'service'], calm: ['payments'] },
         ],
-        edges: [{ id: 'e', source: 'shop', target: 'pay', label: 'Takes payment' }],
+        edges: [{ id: 'e', source: 'shop', target: 'pay', tags: ['connects'], label: 'Takes payment' }],
     },
     controls: [{ type: 'segmented', param: 'level', items: [{ value: 'context', label: 'Context' }, { value: 'container', label: 'Container' }] }],
     panels: [{ title: 'Notes', blocks: [{ type: 'alert', tone: 'warning', text: 'payments is guessed' }] }],
@@ -68,13 +68,57 @@ describe('DiagramLensView', () => {
         expect(screen.queryByRole('option', { name: 'Choose…' })).toBeNull();
     });
 
-    it('selects the CALM element of a node, and follows its link to other parameters in the same change', async () => {
+    it('selects the CALM element of a node on click, and drills down from its badge', async () => {
         const { onParamsChange, onSelectElement } = show();
         fireEvent.click(await screen.findByRole('button', { name: 'Online Shop' }));
+        expect(onSelectElement).toHaveBeenCalledWith('shop');
+        expect(onParamsChange).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button', { name: 'Open Online Shop' }));
         expect(onParamsChange).toHaveBeenCalledWith({ level: 'container' }, 'shop');
         fireEvent.click(screen.getByRole('button', { name: 'Payments' }));
         expect(onSelectElement).toHaveBeenCalledWith('payments');
-        expect(onSelectElement).toHaveBeenCalledTimes(1);
+    });
+
+    it('selects the container of a group on click, and drills down from its badge', async () => {
+        call.mockResolvedValue({
+            ...reply,
+            graph: {
+                ...reply.graph,
+                groups: [{ id: 'group:shop', label: 'Shop container', tags: ['Box'] }],
+                nodes: reply.graph.nodes.map((node) => node.id === 'pay' ? { ...node, group: 'group:shop' } : node),
+            },
+        });
+        const { onParamsChange, onSelectElement } = show();
+        fireEvent.click(await screen.findByText('Shop container'));
+        expect(onSelectElement).toHaveBeenCalledWith('shop');
+        expect(onParamsChange).not.toHaveBeenCalled();
+        const badges = screen.getAllByRole('button', { name: 'Open Online Shop' });
+        expect(badges).toHaveLength(2);
+        fireEvent.click(badges[0]);
+        expect(onParamsChange).toHaveBeenCalledWith({ level: 'container' }, 'shop');
+    });
+
+    it('hides the key from the canvas toolbar', async () => {
+        vi.spyOn(ExtensionService.prototype, 'fetchLensNotation').mockResolvedValue({
+            styles: { elements: [{ tag: 'actor', background: '#e8f4fd' }], relationships: [] },
+        });
+        show();
+        await screen.findByRole('button', { name: 'Online Shop' });
+        expect(screen.getAllByRole('button', { name: 'Hide key' })).toHaveLength(2);
+        fireEvent.click(screen.getAllByRole('button', { name: 'Hide key' })[0]);
+        expect(screen.queryByRole('button', { name: 'actor' })).toBeNull();
+        expect(screen.getAllByRole('button', { name: 'Show key' })).toHaveLength(2);
+    });
+
+    it('hides the notes from the canvas toolbar', async () => {
+        show();
+        await screen.findByRole('button', { name: 'Online Shop' });
+        expect(screen.getByRole('complementary', { name: 'Lens notes' })).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Hide notes' }));
+        expect(screen.queryByRole('complementary', { name: 'Lens notes' })).toBeNull();
+        expect(screen.getAllByRole('button', { name: 'Show notes' })).toHaveLength(2);
+        fireEvent.click(screen.getAllByRole('button', { name: 'Show notes' })[0]);
+        expect(screen.getByRole('complementary', { name: 'Lens notes' })).toBeInTheDocument();
     });
 
     it('marks a selection with no new request when the route does not take it', async () => {

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { Theme } from '../../theme/useTheme.js';
 import { fitShape } from './geometry.js';
 import { ShapeParts } from './LensShape.js';
@@ -9,30 +10,51 @@ interface LensKeyProps {
     theme: Theme;
     hidden: ReadonlySet<string>;
     onToggle: (tag: string) => void;
+    /** Controlled visibility. Leave out both to keep the internal state. */
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
 }
 
 /** The diagram key: each style that the diagram uses. A click dims the elements with that tag, with no request. */
-export function LensKey({ entries, notation, theme, hidden, onToggle }: LensKeyProps) {
+export function LensKey({ entries, notation, theme, hidden, onToggle, open: controlledOpen, onOpenChange }: LensKeyProps) {
+    const [internalOpen, setInternalOpen] = useState(true);
+    const open = controlledOpen ?? internalOpen;
+    const setOpen = onOpenChange ?? setInternalOpen;
     if (entries.length === 0) return null;
     return (
-        <div className="absolute right-3 bottom-3 max-h-[40%] max-w-56 overflow-auto rounded-lg border border-base-300 bg-base-100/95 p-2 text-xs shadow-sm"
+        <div className="absolute right-3 bottom-3 max-w-56 text-xs shadow-sm"
             onPointerDown={(event) => event.stopPropagation()}>
-            <p className="mb-1 font-semibold text-base-content/70">Key</p>
-            <ul className="flex flex-col gap-0.5">
-                {entries.map((entry) => {
-                    const off = hidden.has(entry.tag);
-                    return (
-                        <li key={`${entry.kind}-${entry.tag}`}>
-                            <button type="button" aria-pressed={!off} title={off ? `Show ${entry.label}` : `Dim ${entry.label}`}
-                                className={`flex w-full items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-base-200 ${off ? 'opacity-40' : ''}`}
-                                onClick={() => onToggle(entry.tag)}>
-                                <Swatch entry={entry} notation={notation} theme={theme} />
-                                <span className="truncate">{entry.label}</span>
-                            </button>
-                        </li>
-                    );
-                })}
-            </ul>
+            {open ? (
+                <div className="max-h-[40vh] overflow-auto rounded-lg border border-base-300 bg-base-100/95 p-2">
+                    <div className="mb-1 flex items-center justify-between gap-3">
+                        <p className="font-semibold text-base-content/70">Key</p>
+                        <button type="button" className="btn btn-ghost btn-xs min-h-0 h-5 px-1" aria-label="Hide key" title="Hide key"
+                            aria-expanded="true" onClick={() => setOpen(false)}>
+                            Hide
+                        </button>
+                    </div>
+                    <ul className="flex flex-col gap-0.5">
+                        {entries.map((entry) => {
+                            const off = hidden.has(entry.tag);
+                            return (
+                                <li key={`${entry.kind}-${entry.tag}`}>
+                                    <button type="button" aria-pressed={!off} title={off ? `Show ${entry.label}` : `Dim ${entry.label}`}
+                                        className={`flex w-full items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-base-200 ${off ? 'opacity-40' : ''}`}
+                                        onClick={() => onToggle(entry.tag)}>
+                                        <Swatch entry={entry} notation={notation} theme={theme} />
+                                        <span className="truncate">{entry.label}</span>
+                                    </button>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                </div>
+            ) : (
+                <button type="button" className="btn btn-sm rounded-lg border border-base-300 bg-base-100/95 shadow-sm"
+                    aria-label="Show key" title="Show key" aria-expanded="false" onClick={() => setOpen(true)}>
+                    Show key
+                </button>
+            )}
         </div>
     );
 }

@@ -17,6 +17,12 @@ interface LensCanvasProps {
     onActivateNode: (node: LensNode) => void;
     /** A click on an edge or a group with `calm` ids. */
     onSelect: (calm: string[]) => void;
+    /** The container node that each group draws, for the drill-down badge. */
+    groupTargets?: ReadonlyMap<string, LensNode>;
+    keyHidden?: boolean;
+    onToggleKey?: () => void;
+    notesOpen?: boolean;
+    onToggleNotes?: () => void;
 }
 
 const SELECTION = '#2563eb';
@@ -50,7 +56,28 @@ const activate = (handler: () => void) => (event: KeyboardEvent) => {
     }
 };
 
-export function LensCanvas({ layout, notation, theme, selectedElement, hiddenTags, onActivateNode, onSelect }: LensCanvasProps) {
+/** A click on an element selects it. A linked element also gets an explicit drill-down badge. */
+function DrillBadge({ x, y, label, background, color, onDrill }: { x: number; y: number; label: string; background: string; color: string; onDrill: () => void }) {
+    return (
+        <g transform={`translate(${x},${y})`} data-drillable role="button" tabIndex={0} aria-label={`Open ${label}`}
+            data-clickable style={{ cursor: 'pointer' }}
+            onClick={(event) => {
+                event.stopPropagation();
+                onDrill();
+            }}
+            onKeyDown={activate(onDrill)}
+            className="outline-none [&:focus-visible>.drill-focus]:opacity-100">
+            <title>{`Drill down into ${label}`}</title>
+            <circle r={9} fill={background} stroke={color} strokeWidth={1.5} />
+            <text textAnchor="middle" dy="4.5" fontSize={13} fontWeight="bold" fill={color} aria-hidden="true">
+                +
+            </text>
+            <circle className="drill-focus opacity-0" r={11} fill="none" stroke={color} strokeWidth={2} strokeDasharray="4 3" />
+        </g>
+    );
+}
+
+export function LensCanvas({ layout, notation, theme, selectedElement, hiddenTags, onActivateNode, onSelect, groupTargets, keyHidden, onToggleKey, notesOpen, onToggleNotes }: LensCanvasProps) {
     const { containerRef, contentRef, transform, isPanning, isInteractive, panHandlers, toggleInteractive, zoomIn, zoomOut, reset } = useSvgZoomPan();
     const uid = useId().replace(/[^A-Za-z0-9_-]/g, '');
     const canvas = CANVAS[theme];
@@ -118,10 +145,19 @@ export function LensCanvas({ layout, notation, theme, selectedElement, hiddenTag
                     {layout.groups.map(({ group, style, x, y, width, height }) => {
                         const shape = style.shape ? findShape(notation, style.shape) : undefined;
                         const fit = shape ? fitShape(shape, undefined, undefined, width, height) : fitShape({ viewBox: [0, 0, width, height], parts: [] }, undefined, undefined, width, height);
+                        // A click selects the container node, even when the group itself carries no calm ids.
+                        const target = groupTargets?.get(group.id);
+                        const calm = target?.calm ?? group.calm;
+                        const selects = !!calm?.length;
                         return (
                             <g key={`g-${group.id}`} transform={`translate(${x},${y})`} opacity={hidden(group.tags) ? DIMMED : style.opacity}
-                                data-group={group.id} data-clickable={group.calm?.length ? true : undefined} onClick={group.calm?.length ? () => onSelect(group.calm!) : undefined}>
+                                data-group={group.id} data-clickable={selects || undefined}
+                                onClick={selects ? () => onSelect(calm!) : undefined}
+                                style={selects ? { cursor: 'pointer' } : undefined}>
                                 <GroupShape label={group.label} shape={shape} fit={fit} style={style} />
+                                {target?.link && (
+                                    <DrillBadge x={width} y={0} label={target.label} background={canvas.background} color={style.color} onDrill={() => onActivateNode(target)} />
+                                )}
                                 {selected(group.calm) && <rect width={width} height={height} rx={6} fill="none" stroke={SELECTION} strokeWidth={2} />}
                             </g>
                         );
@@ -158,17 +194,20 @@ export function LensCanvas({ layout, notation, theme, selectedElement, hiddenTag
                         );
                     })}
                     {layout.nodes.map(({ node, style, shape, fit, x, y }) => {
-                        const interactive = !!node.link || !!node.calm?.length;
+                        const selectable = !!node.calm?.length;
                         return (
                             <g key={`n-${node.id}`} transform={`translate(${x},${y})`} data-node={node.id}
                                 opacity={hidden(node.tags) ? DIMMED : style.opacity}
-                                data-clickable={interactive || undefined} role={interactive ? 'button' : undefined} tabIndex={interactive ? 0 : undefined} aria-label={interactive ? node.label : undefined}
-                                onClick={interactive ? () => onActivateNode(node) : undefined}
-                                onKeyDown={interactive ? activate(() => onActivateNode(node)) : undefined}
-                                style={interactive ? { cursor: 'pointer' } : undefined}
+                                data-clickable={selectable || undefined} role={selectable ? 'button' : undefined} tabIndex={selectable ? 0 : undefined} aria-label={selectable ? node.label : undefined}
+                                onClick={selectable ? () => onSelect(node.calm!) : undefined}
+                                onKeyDown={selectable ? activate(() => onSelect(node.calm!)) : undefined}
+                                style={selectable ? { cursor: 'pointer' } : undefined}
                                 className="outline-none [&:focus-visible>.lens-focus]:opacity-100">
-                                <title>{[node.tooltip, node.link?.params ? 'Click to open' : undefined].filter(Boolean).join('\n') || node.label}</title>
+                                <title>{node.tooltip || node.label}</title>
                                 <NodeShape node={node} shape={shape} fit={fit} style={style} />
+                                {node.link && (
+                                    <DrillBadge x={fit.width} y={0} label={node.label} background={canvas.background} color={style.color} onDrill={() => onActivateNode(node)} />
+                                )}
                                 {selected(node.calm) && <rect x={-4} y={-4} width={fit.width + 8} height={fit.height + 8} rx={8} fill="none" stroke={SELECTION} strokeWidth={3} data-selected />}
                                 <rect className="lens-focus opacity-0" x={-6} y={-6} width={fit.width + 12} height={fit.height + 12} rx={9} fill="none" stroke={SELECTION} strokeWidth={2} strokeDasharray="4 3" />
                             </g>
@@ -176,7 +215,8 @@ export function LensCanvas({ layout, notation, theme, selectedElement, hiddenTag
                     })}
                 </svg>
             </div>
-            <ZoomControls onZoomIn={zoomIn} onZoomOut={zoomOut} onReset={reset} isInteractive={isInteractive} onToggleInteractive={toggleInteractive} />
+            <ZoomControls onZoomIn={zoomIn} onZoomOut={zoomOut} onReset={reset} isInteractive={isInteractive} onToggleInteractive={toggleInteractive}
+                keyHidden={keyHidden} onToggleKey={onToggleKey} notesOpen={notesOpen} onToggleNotes={onToggleNotes} />
         </div>
     );
 }

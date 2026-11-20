@@ -49,6 +49,7 @@ export function DiagramLensView({ extension, lens, context, params, onParamsChan
     const [laidOut, setLaidOut] = useState<LaidOut>();
     const [hiddenTags, setHiddenTags] = useState<ReadonlySet<string>>(new Set());
     const [panelsOpen, setPanelsOpen] = useState(true);
+    const [keyHidden, setKeyHidden] = useState(false);
     const route = extension.routes.find((entry) => entry.id === lens.route);
     const values = useMemo(() => lensParams(lens, params), [lens, params]);
     const { namespace, resource, resourceType, resourceId, version, selectedElement } = context;
@@ -129,6 +130,15 @@ export function DiagramLensView({ extension, lens, context, params, onParamsChan
             if (!next.delete(tag)) next.add(tag);
             return next;
         });
+    // A group draws its container node, so its drill-down badge follows the container's link.
+    // The service names a group `group:<node-id>` after the node it draws.
+    const groupTargets = useMemo(() => {
+        if (state.status !== 'ready') return new Map<string, LensNode>();
+        const nodes = new Map(state.reply.graph.nodes.map((node) => [node.id, node]));
+        return new Map(state.reply.graph.groups.map((group) => group.id)
+            .map((id) => [id, nodes.get(id.startsWith('group:') ? id.slice('group:'.length) : id)] as const)
+            .filter(([, node]) => node !== undefined) as Map<string, LensNode>);
+    }, [state]);
 
     return (
         <section className="flex h-full min-h-0 flex-col" aria-label={lens.title} data-lens={`${extension.id}/${lens.id}`}>
@@ -156,8 +166,12 @@ export function DiagramLensView({ extension, lens, context, params, onParamsChan
                     <>
                         <div className="relative min-h-0 min-w-0 flex-1">
                             <LensCanvas layout={state.layout} notation={state.notation} theme={theme} selectedElement={selectedElement}
-                                hiddenTags={hiddenTags} onActivateNode={activate} onSelect={(calm) => onSelectElement(calm[0])} />
-                            <LensKey entries={entries} notation={state.notation} theme={theme} hidden={hiddenTags} onToggle={toggleTag} />
+                                hiddenTags={hiddenTags} onActivateNode={activate} onSelect={(calm) => onSelectElement(calm[0])}
+                                groupTargets={groupTargets}
+                                keyHidden={keyHidden} onToggleKey={entries.length > 0 ? () => setKeyHidden((current) => !current) : undefined}
+                                notesOpen={panelsOpen} onToggleNotes={state.reply.panels.length > 0 ? () => setPanelsOpen((current) => !current) : undefined} />
+                            <LensKey entries={entries} notation={state.notation} theme={theme} hidden={hiddenTags} onToggle={toggleTag}
+                                open={!keyHidden} onOpenChange={(open) => setKeyHidden(!open)} />
                         </div>
                         {panelsOpen && state.reply.panels.length > 0 && (
                             <aside className="flex max-h-[40%] shrink-0 flex-col gap-4 overflow-auto border-t border-base-300 p-3 lg:max-h-none lg:w-80 lg:border-l lg:border-t-0" aria-label="Lens notes">

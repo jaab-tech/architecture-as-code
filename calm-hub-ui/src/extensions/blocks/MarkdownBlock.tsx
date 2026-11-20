@@ -1,9 +1,10 @@
-import { ReactNode } from 'react';
+import { isValidElement, ReactNode } from 'react';
 import Markdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import '../../hub/components/adr-renderer/AdrMarkdown.css';
 import { Heading, HeadingLevel } from '../Heading.js';
 import { safeHref } from '../ScreenLink.js';
+import { CodeBlock } from './CodeBlock.js';
 
 // Tailwind's base styles remove heading sizes, list markers and gaps, so Markdown sets its own.
 const HEADING_CLASS = ['text-lg font-bold mt-4 mb-2', 'text-base font-bold mt-4 mb-2', 'text-sm font-semibold mt-3 mb-1'];
@@ -39,6 +40,17 @@ function components(below: HeadingLevel): Components {
                 <span>{children}</span>
             ),
         img: ({ alt }) => <span>{alt}</span>,
+        // A fenced block becomes a coloured viewer with copy and expand. Inline code is a bare
+        // code element with no pre parent, so it keeps the plain rendering.
+        pre: ({ children }) => {
+            const child = Array.isArray(children) ? children[0] : children;
+            if (isValidElement<{ className?: string; children?: ReactNode }>(child) && child.type === 'code') {
+                const raw = child.props.children;
+                const text = (Array.isArray(raw) ? raw.join('') : String(raw ?? '')).replace(/\n$/, '');
+                return <CodeBlock code={text} language={/language-(\w+)/.exec(child.props.className ?? '')?.[1]} />;
+            }
+            return <pre>{children}</pre>;
+        },
     };
 }
 
