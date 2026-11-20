@@ -430,6 +430,8 @@ export class CanvasPanel {
                     filter: (v['filter'] as Record<string, unknown>) ?? {},
                     decorators,
                     drillDown: (v['drill-down'] as Record<string, string> | undefined) ?? {},
+                    ...(typeof v['group'] === 'string' ? { group: v['group'] as string } : {}),
+                    ...(v['derived-from'] ? { derived: true } : {}),
                 });
             } catch {
                 continue;

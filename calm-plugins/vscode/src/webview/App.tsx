@@ -1112,9 +1112,23 @@ function CanvasApp() {
                     <span className="calm-toolbar-sep" />
                     <select value={activeViewId} onChange={(e) => applyView(e.target.value)} className="calm-toolbar-btn" title="Filter the canvas by a CALM view sidecar (*.calm-view.json)">
                         <option value="ALL">All nodes</option>
-                        {availableViews.map((v) => (
-                            <option key={v.uniqueId} value={v.uniqueId}>{v.name} ({v.audience.join(', ')})</option>
-                        ))}
+                        {(() => {
+                            const groups = new Map<string, typeof availableViews>();
+                            for (const v of availableViews) {
+                                const g = v.group ?? 'Ungrouped';
+                                if (!groups.has(g)) groups.set(g, []);
+                                groups.get(g)?.push(v);
+                            }
+                            return [...groups.entries()].map(([g, vs]) => (
+                                <optgroup key={g} label={g}>
+                                    {vs.map((v) => (
+                                        <option key={v.uniqueId} value={v.uniqueId}>
+                                            {v.name} ({v.audience.join(', ')}){v.derived ? ' · derived' : ''}
+                                        </option>
+                                    ))}
+                                </optgroup>
+                            ));
+                        })()}
                     </select>
                     {viewStats && (
                         <span style={{ fontSize: '11px', color: 'var(--calm-fg)', opacity: 0.8, marginLeft: '8px' }}>{viewStats}</span>

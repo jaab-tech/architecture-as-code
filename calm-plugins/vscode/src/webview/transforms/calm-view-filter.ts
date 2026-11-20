@@ -3,6 +3,8 @@ import type { CalmArchitecture } from './calm-editor-transformer';
 export interface CalmViewFilter {
     nodes?: string[];
     'node-types'?: string[];
+    metadata?: Record<string, string[]>;
+    controls?: string[];
     relationships?: string[];
     flows?: string[];
     decorators?: string[];
@@ -111,8 +113,18 @@ export function resolveViewSelection(
     }
     const selected = new Set<string>(filter.nodes ?? []);
     for (const [id, n] of nodes) {
-        const t = (n as Record<string, unknown>)['node-type'] as string;
-        if (filter['node-types']?.includes(t)) selected.add(id);
+        const rec = n as Record<string, unknown>;
+        if (filter['node-types']?.includes(rec['node-type'] as string)) selected.add(id);
+        const ctrl = (rec['controls'] as Record<string, unknown> | undefined) ?? {};
+        if ((filter.controls ?? []).some((c) => c in ctrl)) selected.add(id);
+        const meta = (rec['metadata'] as Record<string, unknown> | undefined) ?? {};
+        const wanted = filter.metadata ?? {};
+        if (
+            Object.keys(wanted).length > 0 &&
+            Object.entries(wanted).every(([k, vals]) => (vals as string[]).includes(meta[k] as string))
+        ) {
+            selected.add(id);
+        }
     }
     const rels = new Map<string, Record<string, unknown>>();
     for (const r of arch.relationships ?? []) {

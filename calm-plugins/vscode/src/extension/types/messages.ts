@@ -16,6 +16,8 @@ export interface ListedCalmView {
     filter: Record<string, unknown>;
     decorators: ListedViewDecorator[];
     drillDown: Record<string, string>;
+    group?: string;
+    derived?: boolean;
 }
 
 export type ExtToWebviewMessage =

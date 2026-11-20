@@ -40,6 +40,28 @@ describe('resolveViewSelection', () => {
         const sel = resolveViewSelection(model, { 'node-types': ['database'] });
         expect([...sel.nodes]).toEqual(['db']);
     });
+    it('selects by node metadata match', () => {
+        const m = arch(
+            [
+                { 'unique-id': 'a', 'node-type': 'service', metadata: { layer: 'app' } },
+                { 'unique-id': 'b', 'node-type': 'service', metadata: { layer: 'infra' } },
+                { 'unique-id': 'db', 'node-type': 'database' },
+            ],
+            []
+        );
+        expect([...resolveViewSelection(m, { metadata: { layer: ['app'] } }).nodes]).toEqual(['a']);
+        expect([...resolveViewSelection(m, { metadata: { layer: ['nope'] } }).nodes]).toEqual([]);
+    });
+    it('selects by control claim', () => {
+        const m = arch(
+            [
+                { 'unique-id': 'a', 'node-type': 'service', controls: { 'audit-logging': {} } },
+                { 'unique-id': 'b', 'node-type': 'service' },
+            ],
+            []
+        );
+        expect([...resolveViewSelection(m, { controls: ['audit-logging'] }).nodes]).toEqual(['a']);
+    });
     it('closes over relationships with all endpoints inside', () => {
         const sel = resolveViewSelection(model, { nodes: ['a', 'b'] });
         expect(sel.relationships.has('r1')).toBe(true);

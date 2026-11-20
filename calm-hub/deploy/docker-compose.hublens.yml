@@ -1,0 +1,19 @@
+services:
+  calmhub:
+    image: finos/calm-hub:main
+    volumes:
+      - /Users/andresa/git/_PROJECTS/CALM/calm-hub-deploy/extensions:/extensions:ro
+      - /Users/andresa/git/_PROJECTS/CALM/calm-hub-deploy/keys:/keys:ro
+    environment:
+      - CALM_EXTENSIONS_DIR=/extensions
+      - CALM_EXTENSIONS_ALLOW_WITHOUT_AUTH=true
+      # The multi-cloud landing zone model is 1.31 MB; the default is 1 MiB.
+      - CALM_EXTENSIONS_HTTP_MAX_REQUEST_BYTES=4194304
+      - CALM_EXTENSIONS_IDENTITY_PRIVATE_KEY_LOCATION=/keys/hub-key.pem
+      - CALM_EXTENSIONS_IDENTITY_PUBLIC_KEY_LOCATIONS=/keys/hub-key.pub
+      - CALM_EXTENSIONS__EA_LAYERS__BACKEND_URL=http://host.docker.internal:8094
+      - CALM_EXTENSIONS__EA_LAYERS__ALLOW_HTTP=true
+      - CALM_EXTENSIONS__EA_LAYERS__ENABLED=true
+      - CALM_EXTENSIONS__CALM_VIEWS__BACKEND_URL=http://host.docker.internal:8095
+      - CALM_EXTENSIONS__CALM_VIEWS__ALLOW_HTTP=true
+      - CALM_EXTENSIONS__CALM_VIEWS__ENABLED=true
